@@ -1,2 +1,4 @@
 flask
 pycryptodome
+gunicorn
+pymongo

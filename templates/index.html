@@ -77,7 +77,7 @@
                             loadNotepad("");
                             alert("A note is successfully created");
                         }else if(xmr.responseText==="KeyPresent"){
-                            alert("Key or Validator Key you entered are incerrect. Please Try Again.")
+                            alert("Key or Validator Key you entered are incerrect. Please Try Again.");
                         }else{
                             loadNotepad(xmr.responseText);
                         }
@@ -116,7 +116,7 @@
             </tr>
         </form>
     </table>
-    <div id="cont" style="display: none;">
+    <div id="cont" style="display: none; text-align: center;">
         <textarea id="note" style="display: block; height: 400px; width: 800px;"></textarea>
         <input type="button" value="Update" onclick="updateNote()"/>
         <input type="button" value="Delete" onclick="deleteNote()"/>

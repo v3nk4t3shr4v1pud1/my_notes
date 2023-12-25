@@ -2,15 +2,15 @@ import binascii as ba
 import os
 from flask import Flask, make_response,render_template,request,session
 import sqlite3 as sql
+import pymongo as pmdb
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad,unpad
 app=Flask(__name__)
 app.config.from_pyfile("config.py")
 app.secret_key=os.urandom(16)
-db=sql.connect(app.config.get("db_name","notes.sqlite"),check_same_thread=False)
-cur=db.cursor()
-db.execute("create table if not exists notes(valid varchar(32) primary key,validEnc varchar(32),note varchar)")
-db.commit()
+client=pmdb.MongoClient(app.config.get("db_client","localhost"),app.config.get("db_port",27017))
+db=client.get_database(app.config.get("db_name","notes"))
+coll=db.get_collection(app.config.get("coll_name","notes"))
 
 @app.route("/")
 def home():
@@ -22,34 +22,31 @@ def openNote():
     encKey=(encKey*(16//len(encKey.encode('utf-8'))))if len(encKey)<16 else encKey
     encKey+=encKey[:16-len(encKey)]
     valid=request.form.get("valid")
-    cur.execute("select * from notes where valid='{}'".format(valid))
-    note=cur.fetchone()
+    note=coll.find_one({"valid":valid})
     aes=AES.new(bytes(encKey.encode('utf-8')),AES.MODE_ECB)
     if note:
-        validEnc=ba.unhexlify(note[1])
+        validEnc=ba.unhexlify(note["validEnc"])
         validEncDec=unpad(aes.decrypt(validEnc,output=None),16).decode('utf-8')
         if valid==validEncDec:
             session["key"]=encKey
             session["valid"]=valid
-            if note[2]=='':
+            if note["note"]=='':
                 return ''
-            return unpad(aes.decrypt(ba.unhexlify(note[2])),16).decode('utf-8')
+            return unpad(aes.decrypt(ba.unhexlify(note["note"])),16).decode('utf-8')
         else:
             return "KeyPresent"
     else:
         session["key"]=encKey
         session["valid"]=valid
         validEnc=aes.encrypt(pad(bytes(valid.encode('utf-8')),16)).hex()
-        db.execute("insert into notes values('{}','{}','')".format(valid,validEnc))
-        db.commit()
+        coll.insert_one({"valid":valid,"validEnc":validEnc,"note":""})
         return "NoteCreated"
 
 @app.route("/delete",methods=["DELETE"])
 def deleteNote():
     valid=session["valid"]
     try:
-        db.execute("delete from notes where valid='{}'".format(valid))
-        db.commit()
+        coll.delete_one({"valid":valid})
         return "Success"
     except:
         return "Error"
@@ -58,17 +55,15 @@ def deleteNote():
 def updateNote():
     note=request.form.get("note","")
     valid=session["valid"]
-    cur.execute("select * from notes where valid='{}'".format(valid))
-    noteDb=cur.fetchone()
+    noteDb=coll.find_one({"valid":valid})
     encKey=session["key"]
     aes=AES.new(bytes(encKey.encode('utf-8')),AES.MODE_ECB)
-    if note=='':
+    if note=='' and noteDb["note"]=='':
         return "Empty"
     encNote=aes.encrypt(pad(bytes(note.encode('utf-8')),16)).hex()
-    if encNote==noteDb[2]:
+    if encNote==noteDb["note"]:
         return "NoChange"
-    db.execute("update notes set note='{}' where valid='{}'".format(encNote,valid))
-    db.commit()
+    coll.update_one({"valid":valid},{"$set":{"note":encNote}})
     return "Success"
 
 if __name__=="__main__":
